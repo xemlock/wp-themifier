@@ -2,6 +2,10 @@
 
 // This is a quick'n'dirty tool for building WP theme files from a single
 // HTML file.
+//
+// Features:
+// - Automatically handles wp_head and wp_footer
+// - Automatically prepends theme uri when neccessary
 
 class WPThemifier_TokenStream
 {
@@ -515,13 +519,16 @@ class WPThemifier
                 $this->_ob = true;
                 $this->_vars['wp_head'] = 'ob_clean();'
                     . 'wp_head();'
-                    . '$head = ob_get_contents();'
-                    . '$head = preg_replace(\'/<meta\s+name="generator"\s+content="[^"]+"\s*\\/?>/i\', \'\', $head);'
-                    . '$head = join("\n    ", preg_split(\'/[\n\r]\s*/\', trim($head))) . "\n";';
+                    . '$wp_head = ob_get_contents();'
+                    . '$wp_head = preg_replace(\'/<meta\s+name="generator"\s+content="[^"]+"\s*\\/?>/i\', \'\', $wp_head);'
+                    . '$wp_head = join("\n    ", preg_split(\'/[\n\r]\s*/\', trim($wp_head))) . "\n";';
                 return '<?php echo $wp_head; ?>';
 
             case 'wp_footer': // wp admin bar is located here
                 return '<?php wp_footer(); ?>'; 
+
+            case 'search_query':
+                return '<?php echo get_search_query(); ?>';
 
             // template parts
             case 'header':
@@ -569,31 +576,31 @@ class WPThemifier
                 return '<?php echo $base_url; ?>';
 
             case 'request_uri':
-                return '<?php echo $_SERVER[\'REQUEST_URI\']; ?>';
+                $this->_vars['request_uri'] = '$request_uri = $_SERVER[\'REQUEST_URI\'];';
+                return '<?php echo esc_url($request_uri); ?>';
 
             case 'login_url':
                 $this->_parseVar('request_uri');
-                $this->_vars['login_url'] = '$login_url = esc_url(wp_login_url($request_uri));';
-                return '<?php echo $login_url; ?>';
+                $this->_vars['login_url'] = '$login_url = wp_login_url($request_uri);';
+                return '<?php echo esc_url($login_url); ?>';
 
             case 'logout_url':
                 $this->_parseVar('request_uri');
-                $this->_vars['logout_url'] = '$logout_url = esc_url(wp_logout_url($request_uri));';
-                return '<?php echo $logout_url; ?>';
+                $this->_vars['logout_url'] = '$logout_url = wp_logout_url($request_uri);';
+                return '<?php echo esc_url($logout_url); ?>';
 
             case 'lostpassword_url':
                 $this->_parseVar('request_uri');
-                $this->_vars['lostpassword_url'] = '$lostpassword_url = esc_url(wp_lostpassword_url($request_uri));';
-                return '<?php echo $lostpassword_url; ?>';
+                $this->_vars['lostpassword_url'] = '$lostpassword_url = wp_lostpassword_url($request_uri);';
+                return '<?php echo esc_url($lostpassword_url); ?>';
 
             case 'registration_url':
-                $this->_parseVar('request_uri');
-                $this->_vars['registration_url'] = '$registration_url = esc_url(wp_registration_url());';
-                return '<?php echo $registration_url; ?>';
+                $this->_vars['registration_url'] = '$registration_url = wp_registration_url();';
+                return '<?php echo esc_url($registration_url); ?>';
 
             case 'template_directory_uri':
                 $this->_vars['template_directory_uri'] = '$template_directory_uri = get_template_directory_uri();';
-                return '<?php echo $template_directory_uri; ?>';
+                return '<?php echo esc_url($template_directory_uri); ?>';
 
             case 'language_attributes':
                 $this->_ob = true;
