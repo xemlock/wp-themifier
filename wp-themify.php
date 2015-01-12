@@ -80,13 +80,7 @@ class WPThemifier
             $key = $match['key'][0];
             $value = $match['value'][0];
 
-            if (in_array($value, array('true', 'yes', 'on'), true)) {
-                $value = true;
-            } elseif (in_array($value, array('false', 'no', 'off'), true)) {
-                $value = false;
-            }
-
-            $attrs[$key] = $value;
+            $attrs[$key] = $this->coerce($value);
             $offset = $match[0][1] + strlen($match[0][0]);
         }
         return $attrs;
@@ -96,8 +90,8 @@ class WPThemifier
     {
         // trailing newlines are consumed with tags
         $regexes = array(
-            self::TYPE_TAG_START => '/<\s*wp:(?P<tag>[-_a-zA-Z0-9]+)' . self::ATTRS_RE . '\s*\/?[>]\n?/',
-            self::TYPE_TAG_END   => '/<\s*\/wp:(?P<tag>[-_a-zA-Z0-9]+)\s*>\n?/',
+            self::TYPE_TAG_START => '/<\s*wp:(?P<tag>[-_a-zA-Z0-9]+)' . self::ATTRS_RE . '\s*\/?[>]\s*/',
+            self::TYPE_TAG_END   => '/<\s*\/wp:(?P<tag>[-_a-zA-Z0-9]+)\s*>\s*/',
             self::TYPE_VAR       => '/\$\{\s*(?P<var>[_a-zA-Z][_a-zA-Z0-9]*)\s*\}/',
         );
 
@@ -240,14 +234,19 @@ class WPThemifier
         // replace all wp: commentags with tags, i.e.
         // <!-- wp:tag param="value" --> -> <wp:tag param="value">
         $input = preg_replace(array(
-            '/<!--\s*(wp:\S+' . self::ATTRS_RE . ')\s*-->/',
-            '/<!--\s*(\/wp:\S+)\s*-->/',
+            '/<!--\s*(wp:[-_a-zA-Z0-9]+' . self::ATTRS_RE . ')\s*-->/i',
+            '/<!--\s*(\/wp:[-_a-zA-Z0-9]+)\s*-->/i',
         ), '<$1>', $input);
 
         // add language_attributes to HTML, append wp_head to head if necessary
         $input = preg_replace('/<html([\s>])/', '<html ${language_attributes}$1', $input);
+
         if ((stripos($input, '</head>') !== false) && !preg_match('/\$\{\s*wp_head\s*\}/', $input)) {
             $input = preg_replace('/([ \t]*)(<\\/head>)/i', '$1$1${ wp_head }' . "\n" . '$1$2', $input);
+        }
+
+        if ((stripos($input, '</body>') !== false) && !preg_match('/\$\{\s*wp_footer\s*\}/', $input)) {
+            $input = preg_replace('/([ \t]*)(<\\/body>)/i', '$1$1${ wp_footer }' . "\n" . '$1$2', $input);
         }
 
         // apply proper charset
@@ -356,6 +355,9 @@ class WPThemifier
                 }
                 break;
 
+            case 'test':
+                return $this->parseTest($token);
+
             case 'trans':
             case 'translate':
                 if (!$this->_theme) {
@@ -371,7 +373,7 @@ class WPThemifier
                 break;
 
             default:
-                throw new Exception('Unrecognized tag: ' . $token['tag']);
+                throw new Exception('Unrecognized tag: ' . $token['tag'] . ' at line: ' . $token['lineno']);
         }
     }
 
@@ -404,7 +406,13 @@ class WPThemifier
 
         $this->_currentTemplate = null;
 
-        $preamble = '    if (!is_plugin_active(\'wp-themifier-runtime/wp-themifier-runtime.php\')) { echo \'WP Themifier Runtime plugin is required for this theme to work. Please <a href="admin_url(\\\'plugins.php\\\')">enable (or install) it</a>.\'; exit; }' . "\n";
+        $preamble =
+            '    require_once ABSPATH . \'wp-admin/includes/plugin.php\';' . "\n" .
+            '    if (!is_plugin_active(\'wp-themifier-runtime/wp-themifier-runtime.php\')) {' . "\n" .
+            '        echo \'WP Themifier Runtime plugin is required for this theme to work.\';' . "\n" .
+            '        echo \'Please <a href="\' . admin_url(\'plugins.php\') . \'">enable</a> or <a href="http://github.com/xemlock/wp-themifier-runtime">install</a> it.\';' . "\n" .
+            '        exit;' . "\n" .
+            '    }' . "\n";
 
         if ($this->_vars) {
             $preamble .= ($this->_ob ? '    ob_start();' . "\n" : '')
@@ -413,7 +421,7 @@ class WPThemifier
         }
 
         $value = '<?php' . "\n"
-            . '    // Generated automatically by WP Themifier. Do not edit! (unless you know what you\'re doing)' . "\n\n"
+            . '    // Generated automatically by WP Themifier. Do not edit! (unless you know what you\'re doing)' . "\n"
             . $preamble
             . '?' . '>' . "\n"
             . $value;
@@ -421,16 +429,69 @@ class WPThemifier
         return $value;
     }
 
+    public function parseTest($token)
+    {
+        $var = trim($token['attrs']['var']);
+        if (empty($var)) {
+            throw new Exception('wp:test tag reqiures var attribute to be provided');
+        }
+
+        $this->_parseVar($var);
+
+        $value = null;
+
+        if (isset($token['attrs']['value'])) {
+            $value = $this->coerce($token['attrs']['value']);
+        }
+
+        $content = $this->_parse(function ($token, $stream) {
+            return $token['type'] === WPThemifier::TYPE_TAG_END
+                && $token['tag'] === 'test';
+        });
+
+        // check if defined, then perform any value check
+        $cond = 'isset($' . $var . ')';
+
+        if ($value !== null) {
+            $eq = $this->coerce(@$token['attrs']['strict']) ? '===' : '==';
+            $val = var_export($value, true);
+            $cond .= " && ($${var} ${eq} ${val})";
+        } else {
+            $cond .= " && $${var}";
+        }
+
+        return '<?php if (' . $cond . '): ?>' . "\n" . $content . "\n" . '<?php endif; ?>' . "\n";
+    }
+
+    public function coerce($value)
+    {
+        if (in_array(strtolower($value), array('true', 'yes', 'on'), true)) {
+            return true;
+        }
+        if (in_array(strtolower($value), array('false', 'no', 'off'), true)) {
+            return false;
+        }
+        if (strtolower($value) === 'null') {
+            return null;
+        }
+        if (ctype_digit($value)) {
+            return intval($value);
+        }
+        return $value;
+    }
+
     public function _checkUrls(array $match)
     {
         $url = $match['url'];
         if (!preg_match('/^([#\/]|(javascript|mailto):|((f|ht)tp(s)?):\/\/)/i', $url)) {
-            if (substr($url, 0, 2) !== '{{') {
-                // do not prepend template_directory_uri if another variable is present
+            if (substr($url, 0, 2) !== '${' &&
+                substr($url, 0, 5) !== '<?php'
+            ) {
                 $url = '${ template_directory_uri }/' . $url;
+                return $match['attr'] . '="' . $url . '"';
             }
         }
-        return $match['attr'] . '="' . $url . '"';
+        return $match[0];
     }
 
     public function _parseVar($varname, $token = null)
@@ -452,12 +513,15 @@ class WPThemifier
 
             case 'wp_head':
                 $this->_ob = true;
-                $this->_vars['wp_head'] = 'ob_start();'
+                $this->_vars['wp_head'] = 'ob_clean();'
                     . 'wp_head();'
                     . '$head = ob_get_contents();'
                     . '$head = preg_replace(\'/<meta\s+name="generator"\s+content="[^"]+"\s*\\/?>/i\', \'\', $head);'
                     . '$head = join("\n    ", preg_split(\'/[\n\r]\s*/\', trim($head))) . "\n";';
                 return '<?php echo $wp_head; ?>';
+
+            case 'wp_footer': // wp admin bar is located here
+                return '<?php wp_footer(); ?>'; 
 
             // template parts
             case 'header':
@@ -507,8 +571,28 @@ class WPThemifier
             case 'request_uri':
                 return '<?php echo $_SERVER[\'REQUEST_URI\']; ?>';
 
+            case 'login_url':
+                $this->_parseVar('request_uri');
+                $this->_vars['login_url'] = '$login_url = esc_url(wp_login_url($request_uri));';
+                return '<?php echo $login_url; ?>';
+
+            case 'logout_url':
+                $this->_parseVar('request_uri');
+                $this->_vars['logout_url'] = '$logout_url = esc_url(wp_logout_url($request_uri));';
+                return '<?php echo $logout_url; ?>';
+
+            case 'lostpassword_url':
+                $this->_parseVar('request_uri');
+                $this->_vars['lostpassword_url'] = '$lostpassword_url = esc_url(wp_lostpassword_url($request_uri));';
+                return '<?php echo $lostpassword_url; ?>';
+
+            case 'registration_url':
+                $this->_parseVar('request_uri');
+                $this->_vars['registration_url'] = '$registration_url = esc_url(wp_registration_url());';
+                return '<?php echo $registration_url; ?>';
+
             case 'template_directory_uri':
-                $this->_vars['template_directory_uri'] = '$template_uri = get_template_directory_uri();';
+                $this->_vars['template_directory_uri'] = '$template_directory_uri = get_template_directory_uri();';
                 return '<?php echo $template_directory_uri; ?>';
 
             case 'language_attributes':
@@ -542,6 +626,12 @@ class WPThemifier
                 $this->_parseVar('base_url');
                 $this->_vars['cookie_path'] = '$cookie_path = rtrim($base_url, \'/\') . \'/\';';
                 return '<?php echo $cookie_path; ?>';
+
+            default:
+                if (preg_match('/^[_a-zA-Z][_a-zA-Z0-9]*$/', $varname)) {
+                    return '<?php echo ' . $varname . '; ?>';
+                }
+                throw new Exception('Invalid variable name: ' . $varname);
         }
     }
 }
