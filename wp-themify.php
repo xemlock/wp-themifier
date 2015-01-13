@@ -34,6 +34,18 @@ class WPThemifier_TokenStream
         return null;
     }
 
+    public function nextIf($type, array $match = array())
+    {
+        if (null !== ($next = $this->peek())) {
+            if ($next['type'] === $type &&
+                (empty($match) || (array_intersect_key($next, $match) == $match))
+            ) {
+                return $this->next();
+            }
+        }
+        return null;
+    }
+
     public function hasNext()
     {
         return isset($this->_tokens[$this->_pos + 1]);
@@ -238,7 +250,7 @@ class WPThemifier
         // replace all wp: commentags with tags, i.e.
         // <!-- wp:tag param="value" --> -> <wp:tag param="value">
         $input = preg_replace(array(
-            '/<!--\s*(wp:[-_a-zA-Z0-9]+' . self::ATTRS_RE . ')\s*-->/i',
+            '/<!--\s*(wp:[-_a-zA-Z0-9]+' . self::ATTRS_RE . '(\s*\/)?)\s*-->/i',
             '/<!--\s*(\/wp:[-_a-zA-Z0-9]+)\s*-->/i',
         ), '<$1>', $input);
 
@@ -362,6 +374,9 @@ class WPThemifier
             case 'test':
                 return $this->parseTest($token);
 
+            case 'nav-menu':
+                return $this->parseNavMenu($token);
+
             case 'trans':
             case 'translate':
                 if (!$this->_theme) {
@@ -379,6 +394,25 @@ class WPThemifier
             default:
                 throw new Exception('Unrecognized tag: ' . $token['tag'] . ' at line: ' . $token['lineno']);
         }
+    }
+
+    public function parseNavMenu($token)
+    {
+        $options = array();
+        foreach ($token['attrs'] as $k => $val) {
+            $k = preg_replace('/[^_0-9A-Za-z]/', '_', $k);
+            $options[$k] = $val;
+        }
+        if (empty($options['theme_location'])) {
+            throw new Exception('nav-menu tag requires theme location to be set');
+        }
+        $theme_location = $options['theme_location'];
+        unset($options['theme_location']);
+
+        // skip any closing tag
+        $this->_stream->nextIf(self::TYPE_TAG_END, array('tag' => 'nav-menu'));
+
+        return '<?php echo themifier_nav_menu(' . var_export($theme_location, true) . ', ' . var_export($options, true) . '); ?>';
     }
 
     public function parseTemplate($token)
