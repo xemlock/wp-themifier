@@ -587,7 +587,7 @@ class WPThemifier_Compiler
 
             default:
                 if (preg_match('/^[_a-zA-Z][_a-zA-Z0-9]*$/', $varname)) {
-                    return '<?php echo ' . $varname . '; ?>';
+                    return '<?php echo $' . $varname . '; ?>';
                 }
                 throw new Exception('Invalid variable name: ' . $varname);
         }
