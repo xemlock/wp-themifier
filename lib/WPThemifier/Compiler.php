@@ -14,6 +14,7 @@ class WPThemifier_Compiler
     public function __construct($file)
     {
         $this->addTagParser(new WPThemifier_TagParser_Comment());
+        $this->addTagParser(new WPThemifier_TagParser_If());
         $this->addTagParser(new WPThemifier_TagParser_Trans());
         $this->addTagParser(new WPThemifier_TagParser_NavMenu());
         $this->addTagParser(new WPThemifier_TagParser_EditLink());
@@ -320,7 +321,7 @@ class WPThemifier_Compiler
                 if (isset($this->_tagParsers[$token['tag']])) {
                     return $this->_tagParsers[$token['tag']]->parse($token, $this);
                 }
-                throw new Exception('Unrecognized tag: ' . $token['tag'] . ' at line: ' . $token['lineno']);
+                throw new Exception('Mismatched tag: ' . $token['tag'] . ' at line: ' . $token['lineno']);
         }
     }
 

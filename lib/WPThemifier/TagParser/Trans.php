@@ -1,6 +1,6 @@
 <?php
 
-class WPThemifier_TagParser_Trans implements WPThemifier_TagParserInterface
+class WPThemifier_TagParser_Trans extends WPThemifier_TagParser_Abstract
 {
     public function parse(array $token, WPThemifier_Compiler $themifier)
     {
@@ -21,12 +21,6 @@ class WPThemifier_TagParser_Trans implements WPThemifier_TagParserInterface
             str_replace(array("\n", "\t"), array('\\n', '\\t'), var_export($string, true)),
             var_export($themifier->getThemeProp('text_domain'), true)
         );
-    }
-
-    public function tagStop(array $token)
-    {
-        return $token['type'] === WPThemifier_Token::TYPE_TAG_END
-            && $token['tag'] === $this->getTag();
     }
 
     public function getTag()
