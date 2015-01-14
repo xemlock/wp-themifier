@@ -1,0 +1,15 @@
+{
+    "name": "xemlock/wp-themifier",
+    "description": "Theme builder for WordPress developers",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "xemlock",
+            "email": "xemlock@gmail.com"
+        }
+    ],
+    "require": {},
+    "autoload": {
+        "psr-0": {"WPThemifier_": "lib/"}
+    }
+}
