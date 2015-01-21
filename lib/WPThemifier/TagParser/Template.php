@@ -2,10 +2,6 @@
 
 class WPThemifier_TagParser_Template extends WPThemifier_TagParser_Abstract
 {
-    protected $_vars;
-    protected $_ob;
-    protected $_requireRuntime;
-
     public function parse(array $token, WPThemifier_Compiler $themifier)
     {
         $name = trim($token['attrs']['name']);
