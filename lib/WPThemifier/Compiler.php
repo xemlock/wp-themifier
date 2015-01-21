@@ -18,6 +18,7 @@ class WPThemifier_Compiler
         $this->addTagParser(new WPThemifier_TagParser_Trans());
         $this->addTagParser(new WPThemifier_TagParser_NavMenu());
         $this->addTagParser(new WPThemifier_TagParser_EditLink());
+        $this->addTagParser(new WPThemifier_TagParser_Option());
     }
 
     public function compile($file)
@@ -66,8 +67,8 @@ class WPThemifier_Compiler
     {
         // trailing newlines are consumed with tags
         $regexes = array(
-            WPThemifier_Token::TYPE_TAG_START => '/<\s*wp:(?P<tag>[-_a-zA-Z0-9]+)' . self::ATTRS_RE . '\s*\/?[>]\s*/',
-            WPThemifier_Token::TYPE_TAG_END   => '/<\s*\/wp:(?P<tag>[-_a-zA-Z0-9]+)\s*>\s*/',
+            WPThemifier_Token::TYPE_TAG_START => '/<\s*wp-(?P<tag>[-_a-zA-Z0-9]+)' . self::ATTRS_RE . '\s*\/?[>]\s*/',
+            WPThemifier_Token::TYPE_TAG_END   => '/<\s*\/wp-(?P<tag>[-_a-zA-Z0-9]+)\s*>\s*/',
             WPThemifier_Token::TYPE_VAR       => '/\$\{\s*(?P<var>[_a-zA-Z][_a-zA-Z0-9]*)\s*\}/',
         );
 
@@ -210,12 +211,18 @@ class WPThemifier_Compiler
     {
         $input = str_replace(array("\r\n", "\r"), "\n", $input);
 
-        // replace all wp: commentags with tags, i.e.
-        // <!-- wp:tag param="value" --> -> <wp:tag param="value">
+        // replace all wp- commentags with tags, i.e.
+        // <!-- wp-tag param="value" --> -> <wp-tag param="value">
         $input = preg_replace(array(
+            '/<!--\s*(wp-[-_a-zA-Z0-9]+' . self::ATTRS_RE . '(\s*\/)?)\s*-->/i',
+            '/<!--\s*(\/wp-[-_a-zA-Z0-9]+)\s*-->/i',
+            // backward compatibility
             '/<!--\s*(wp:[-_a-zA-Z0-9]+' . self::ATTRS_RE . '(\s*\/)?)\s*-->/i',
             '/<!--\s*(\/wp:[-_a-zA-Z0-9]+)\s*-->/i',
         ), '<$1>', $input);
+
+        // rename all wp: tags to wp-
+        $input = preg_replace('/<(\/)?(wp):/i', '<\1\2-', $input);
 
         // add language_attributes to HTML, append wp_head to head if necessary
         $input = preg_replace('/<html([\s>])/', '<html ${language_attributes}$1', $input);
@@ -386,7 +393,7 @@ class WPThemifier_Compiler
     {
         $var = trim($token['attrs']['var']);
         if (empty($var)) {
-            throw new Exception('wp:test tag reqiures var attribute to be provided');
+            throw new Exception('test tag reqiures var attribute to be provided');
         }
 
         $this->_parseVar($var);

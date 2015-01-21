@@ -16,7 +16,9 @@ class WPThemifier_TagParser_NavMenu implements WPThemifier_TagParserInterface
         unset($options['theme_location']);
 
         // skip closing tag
-        $themifier->getStream()->nextIf(WPThemifier_Token::TYPE_TAG_END, array('tag' => 'nav-menu'));
+        $themifier->getStream()->nextIf(
+            WPThemifier_Token::TYPE_TAG_END, array('tag' => $this->getTag())
+        );
 
         return sprintf('<?php echo themifier_nav_menu(%s, %s); ?>',
             var_export($theme_location, true),
