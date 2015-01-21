@@ -1,6 +1,7 @@
 <?php
 
-abstract class WPThemifier_TagParser_Abstract implements WPThemifier_TagParserInterface
+abstract class WPThemifier_TagParser_Abstract
+    implements WPThemifier_TagParserInterface
 {
     public function tagStop(array $token)
     {

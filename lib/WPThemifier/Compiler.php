@@ -3,22 +3,28 @@
 class WPThemifier_Compiler
 {
     protected $_file;
-    protected $_lexer;
     protected $_theme;
     protected $_themeProps;
     protected $_currentTemplate;
-    protected $_ob;
-    protected $_vars;
     protected $_tagParsers = array();
+    protected $_varEnv;
+    public $templateRegistry = array();
 
     public function __construct($file)
     {
+        $this->_varEnv = new WPThemifier_VarEnv();
+
         $this->addTagParser(new WPThemifier_TagParser_Comment());
         $this->addTagParser(new WPThemifier_TagParser_If());
         $this->addTagParser(new WPThemifier_TagParser_Trans());
         $this->addTagParser(new WPThemifier_TagParser_NavMenu());
         $this->addTagParser(new WPThemifier_TagParser_EditLink());
         $this->addTagParser(new WPThemifier_TagParser_Option());
+    }
+
+    public function getVarEnv()
+    {
+        return $this->_varEnv;
     }
 
     public function compile($file)
@@ -33,6 +39,16 @@ class WPThemifier_Compiler
 
         $this->_stream = $this->tokenize($input);
         $this->parse();
+
+        foreach ($this->templateRegistry as $name => $contents) {
+            $file = basename($name) . '.php';
+
+            // rtrim each line
+            $contents = join("\n", array_map('rtrim', explode("\n", $contents)));
+
+            file_put_contents($file, $contents);
+            echo '[  OK  ] Template ', $name, ' written to ', $file, "\n";
+        }
     }
 
     public function addTagParser(WPThemifier_TagParserInterface $tagParser)
@@ -54,10 +70,15 @@ class WPThemifier_Compiler
         $attrs = array();
         $offset = 0;
         while (preg_match($regex, $input, $match, PREG_OFFSET_CAPTURE, $offset)) {
+            // normalize attribute name, corece attribute value
             $key = $match['key'][0];
-            $value = $match['value'][0];
+            $key = str_replace(array('-', ':'), '_', strtolower($key));
 
-            $attrs[$key] = $this->coerce($value);
+            $value = $match['value'][0];
+            $value = $this->coerce($value);
+
+            $attrs[$key] = $value;
+
             $offset = $match[0][1] + strlen($match[0][0]);
         }
         return $attrs;
@@ -187,13 +208,7 @@ class WPThemifier_Compiler
 
     public function setCurrentTemplate($template)
     {
-        $template = trim($template);
-        if ($template) {
-            if ($this->_currentTemplate) {
-                throw new Exception('Templates cannot be nested');
-            }
-        }
-        $this->_currentTemplate = $template;
+        $this->_currentTemplate = trim($template);
         return $this;
     }
 
@@ -275,7 +290,7 @@ class WPThemifier_Compiler
                     break;
 
                 case WPThemifier_Token::TYPE_VAR:
-                    $o = $this->_parseVar($token['var'], $token);
+                    $o = $this->getVarEnv()->getCurrentScope()->parseVar($token['var']);
                     break;
 
                 default:
@@ -310,15 +325,15 @@ class WPThemifier_Compiler
                 break;
 
             case 'template':
-                $value = $this->parseTemplate($token);
+                if (empty($this->_tagParsers['template'])) {
+                    $this->addTagParser(new WPThemifier_TagParser_Template());
+                }
+                $parser = $this->_tagParsers['template'];
                 $name = trim($token['attrs']['name']);
-                $file = basename($name) . '.php';
-
-                // rtrim each line
-                $value = join("\n", array_map('rtrim', explode("\n", $value)));
-
-                file_put_contents($file, $value);
-                echo '[  OK  ] Template ', $name, ' written to ', $file, "\n";
+                $contents = $parser->parse($token, $this);
+                if (strlen($contents)) {
+                    $this->templateRegistry[$name] = $contents;
+                }
                 break;
 
             case 'test':
@@ -335,58 +350,6 @@ class WPThemifier_Compiler
     public function getStream()
     {
         return $this->_stream;
-    }
-
-    public function parseTemplate($token)
-    {
-        if (empty($this->_theme)) {
-            throw new Exception('Template tag requires theme to be set');
-        }
-        if ($this->_currentTemplate) {
-            throw new Exception('Templates cannot be nested');
-        }
-
-        $this->_requireRuntime = false;
-        $this->_ob = false;
-        $this->_vars = array();
-
-        $name = trim($token['attrs']['name']);
-
-        $this->_currentTemplate = $name;
-        $value = $this->parse(function ($token) {
-            return $token['type'] === WPThemifier_Token::TYPE_TAG_END &&
-                   $token['tag'] === 'template';
-        }, true);
-
-        if ($name === 'header') {
-            // make sure login form works
-            $this->_parseVar('cookie_path');
-            $this->_vars[] = '!headers_sent() && empty($_COOKIE[TEST_COOKIE]) && setcookie(TEST_COOKIE, 1, 0, $cookie_path);';
-        }
-
-        $this->_currentTemplate = null;
-
-        $preamble =
-            '    require_once ABSPATH . \'wp-admin/includes/plugin.php\';' . "\n" .
-            '    if (!is_plugin_active(\'wp-themifier-runtime/wp-themifier-runtime.php\')) {' . "\n" .
-            '        echo \'WP Themifier Runtime plugin is required for this theme to work.\';' . "\n" .
-            '        echo \'Please <a href="\' . admin_url(\'plugins.php\') . \'">enable</a> or <a href="http://github.com/xemlock/wp-themifier-runtime">install</a> it.\';' . "\n" .
-            '        exit;' . "\n" .
-            '    }' . "\n";
-
-        if ($this->_vars) {
-            $preamble .= ($this->_ob ? '    ob_start();' . "\n" : '')
-                      . '    ' . implode("\n    ", $this->_vars) . "\n"
-                      . ($this->_ob ? '    ob_end_clean();' . "\n" : '');
-        }
-
-        $value = '<?php' . "\n"
-            . '    // Generated automatically by WP Themifier. Do not edit! (unless you know what you\'re doing)' . "\n"
-            . $preamble
-            . '?' . '>' . "\n"
-            . $value;
-
-        return $value;
     }
 
     public function parseTest($token)
@@ -454,150 +417,5 @@ class WPThemifier_Compiler
         return $match[0];
     }
 
-    public function _parseVar($varname, $token = null)
-    {
-        if (!$this->_currentTemplate) {
-            throw new Exception('Variables may only appear inside templates, var: ' . $varname . ', line: ' . ($token ? $token['lineno'] : -1));
-        }
-        if (!$this->_theme) {
-            throw new Exception('Variables may only appear after the theme is defined, var: ' . $varname . ', line: ' . ($token ? $token['lineno'] : -1));
-        }
-        switch ($varname) {
-            // document parts
-            case 'charset':
-                $this->_ob = true;
-                $this->_vars['charset'] = 'ob_clean();'
-                    . 'bloginfo(\'charset\');'
-                    . '$charset = ob_get_contents();';
-                return '<?php echo $charset; ?>';
 
-            case 'wp_head':
-                $this->_ob = true;
-                $this->_vars['wp_head'] = 'ob_clean();'
-                    . 'wp_head();'
-                    . '$wp_head = ob_get_contents();'
-                    . '$wp_head = preg_replace(\'/<meta\s+name="generator"\s+content="[^"]+"\s*\\/?>/i\', \'\', $wp_head);'
-                    . '$wp_head = join("\n    ", preg_split(\'/[\n\r]\s*/\', trim($wp_head))) . "\n";';
-                return '<?php echo $wp_head; ?>';
-
-            case 'wp_footer': // wp admin bar is located here
-                return '<?php wp_footer(); ?>'; 
-
-            case 'search_query':
-                return '<?php echo get_search_query(); ?>';
-
-            // template parts
-            case 'header':
-                return '<?php get_header(); ?>';
-
-            case 'footer':
-                return '<?php get_footer(); ?>';
-
-            case 'sidebar':
-                return '<?php get_sidebar(); ?>';
-
-            // page parts
-            case 'ID':
-            case 'id':
-                return '<?php the_ID(); ?>';
-
-            case 'title':
-                return '<?php the_title(); ?>';
-
-            case 'content':
-                return '<?php the_content(); ?>';
-
-            case 'content_template':
-                return '<?php get_template_part(\'content\', get_post_format()); ?>';
-
-            case 'excerpt':
-                return '<?php the_excerpt(); ?>';
-
-            case 'post_class':
-                return '<?php echo join(\' \', get_post_class()); ?>';
-
-            case 'lang':
-                $this->_vars['lang'] = '$lang = themifier_lang_code();';
-                return '<?php echo $lang; ?>';
-
-
-            case 'post_thumbnail':
-                // DON'T set image dimensions in markup!
-                return '<?php echo preg_replace(\'/(width|height)=["\\\'][\d]+["\\\']/i\', \'\', get_the_post_thumbnail()); ?>';
-
-            // variables than can be evaluated once per template
-
-            case 'base_url':
-                $this->_vars['base_url'] = '$base_url = preg_replace(\'|https?://[^/]+|i\', \'\', get_option(\'siteurl\'));';
-                return '<?php echo $base_url; ?>';
-
-            case 'request_uri':
-                $this->_vars['request_uri'] = '$request_uri = $_SERVER[\'REQUEST_URI\'];';
-                return '<?php echo esc_url($request_uri); ?>';
-
-            case 'login_url':
-                $this->_parseVar('request_uri');
-                $this->_vars['login_url'] = '$login_url = wp_login_url($request_uri);';
-                return '<?php echo esc_url($login_url); ?>';
-
-            case 'logout_url':
-                $this->_parseVar('request_uri');
-                $this->_vars['logout_url'] = '$logout_url = wp_logout_url($request_uri);';
-                return '<?php echo esc_url($logout_url); ?>';
-
-            case 'lostpassword_url':
-                $this->_parseVar('request_uri');
-                $this->_vars['lostpassword_url'] = '$lostpassword_url = wp_lostpassword_url($request_uri);';
-                return '<?php echo esc_url($lostpassword_url); ?>';
-
-            case 'registration_url':
-                $this->_vars['registration_url'] = '$registration_url = wp_registration_url();';
-                return '<?php echo esc_url($registration_url); ?>';
-
-            case 'template_directory_uri':
-                $this->_vars['template_directory_uri'] = '$template_directory_uri = get_template_directory_uri();';
-                return '<?php echo esc_url($template_directory_uri); ?>';
-
-            case 'language_attributes':
-                $this->_ob = true;
-                $this->_vars['language_attributes'] = 'ob_clean();'
-                    . 'language_attributes();'
-                    . '$language_attributes = ob_get_contents();';
-                return '<?php echo $language_attributes; ?>';
-
-            case 'home_url':
-                $this->_vars['home_url'] = '$home_url = themifier_home_url();';
-                return '<?php echo $home_url; ?>';
-
-            case 'pingback_url':
-                $this->_vars['pingback_url'] = '$pingback_url = get_bloginfo(\'pingback_url\', \'display\');';
-                return '<?php echo $pingback_url; ?>';
-
-            case 'description':
-                $this->_vars['description'] = '$description = get_bloginfo(\'description\', \'display\');';
-                return '<?php echo $description; ?>';
-
-            case 'body_class':
-                $this->_vars['body_class'] = '$body_class = join(\' \', get_body_class());';
-
-                if (!$this->_themeProps['custom_background']) {
-                    $this->_vars['body_class'] .= '$body_class = preg_replace(\'/\s*custom-background\s*/i\', \'\', $body_class);';
-                }
-                return '<?php echo $body_class; ?>';
-
-            case 'cookie_path':
-                $this->_parseVar('base_url');
-                $this->_vars['cookie_path'] = '$cookie_path = rtrim($base_url, \'/\') . \'/\';';
-                return '<?php echo $cookie_path; ?>';
-
-            case 'search_form':
-                return '<?php get_search_form(); ?>;';
-
-            default:
-                if (preg_match('/^[_a-zA-Z][_a-zA-Z0-9]*$/', $varname)) {
-                    return '<?php echo $' . $varname . '; ?>';
-                }
-                throw new Exception('Invalid variable name: ' . $varname);
-        }
-    }
 }
