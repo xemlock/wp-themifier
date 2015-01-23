@@ -4,7 +4,13 @@ class WPThemifier_TagParser_Template extends WPThemifier_TagParser_Abstract
 {
     public function parse(array $token, WPThemifier_Compiler $themifier)
     {
-        $name = trim($token['attrs']['name']);
+        $attrs = array_merge(array(
+            'name'         => null,
+            'selectable'   => null,
+            'display_name' => null,
+        ), $token['attrs']);
+
+        $name = trim($attrs['name']);
         if (empty($name)) {
             throw new Exception('Template name cannot be empty');
         }
@@ -29,7 +35,20 @@ class WPThemifier_TagParser_Template extends WPThemifier_TagParser_Abstract
 
         $themifier->setCurrentTemplate($prevTemplate);
 
+        if ($attrs['selectable']) {
+            $displayName = trim($attrs['display_name']);
+            if (empty($displayName)) {
+                $displayName = $name;
+            }
+            $info = "    /*\n"
+                  . "     Template name: $displayName\n"
+                  . "     */\n";
+        } else {
+            $info = '';
+        }
+
         $value = '<?php' . "\n"
+            . $info
             . '    // Generated automatically by WP Themifier. Do not edit! (unless you know what you\'re doing)' . "\n"
             . $scope->renderPreamble()
             . '?' . '>' . "\n"
