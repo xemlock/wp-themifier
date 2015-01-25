@@ -21,13 +21,16 @@ class WPThemifier_VarScope
 
     public function renderPreamble()
     {
-        $preamble =
-            '    require_once ABSPATH . \'wp-admin/includes/plugin.php\';' . "\n" .
-            '    if (!is_plugin_active(\'wp-themifier-runtime/wp-themifier-runtime.php\')) {' . "\n" .
-            '        echo \'WP Themifier Runtime plugin is required for this theme to work.\';' . "\n" .
-            '        echo \'Please <a href="\' . admin_url(\'plugins.php\') . \'">enable</a> or <a href="http://github.com/xemlock/wp-themifier-runtime">install</a> it.\';' . "\n" .
-            '        exit;' . "\n" .
-            '    }' . "\n";
+        $preamble = '    require_once ABSPATH . \'wp-admin/includes/plugin.php\';' . "\n";
+
+        if ($this->_requireRuntime) {
+            $preamble .=
+                '    if (!is_plugin_active(\'wp-themifier-runtime/wp-themifier-runtime.php\')) {' . "\n" .
+                '        echo \'WP Themifier Runtime plugin is required for this theme to work.\';' . "\n" .
+                '        echo \'Please <a href="\' . admin_url(\'plugins.php\') . \'">enable</a> or <a href="http://github.com/xemlock/wp-themifier-runtime">install</a> it.\';' . "\n" .
+                '        exit;' . "\n" .
+                '    }' . "\n";
+        }
 
         if ($this->_vars) {
             $preamble .= ($this->_ob ? '    ob_start();' . "\n" : '')
@@ -85,6 +88,18 @@ class WPThemifier_VarScope
             case 'content':
                 return '<?php the_content(); ?>';
 
+            case 'content_main':
+                $this->_requireRuntime = true;
+                return '<?php echo themifier_get_content(null, \'main\'); ?>';
+
+            case 'content_extended':
+                $this->_requireRuntime = true;
+                return '<?php echo themifier_get_content(null, \'extended\'); ?>';
+
+            case 'content_more':
+                $this->_requireRuntime = true;
+                return '<?php echo themifier_get_content(null, \'more\'); ?>';
+
             case 'content_template':
                 return '<?php get_template_part(\'content\', get_post_format()); ?>';
 
@@ -95,9 +110,9 @@ class WPThemifier_VarScope
                 return '<?php echo join(\' \', get_post_class()); ?>';
 
             case 'lang':
+                $this->_requireRuntime = true;
                 $this->_vars['lang'] = '$lang = themifier_lang_code();';
                 return '<?php echo $lang; ?>';
-
 
             case 'post_thumbnail':
                 // DON'T set image dimensions in markup!
@@ -144,6 +159,7 @@ class WPThemifier_VarScope
                 return '<?php echo $language_attributes; ?>';
 
             case 'home_url':
+                $this->_requireRuntime = true;
                 $this->_vars['home_url'] = '$home_url = themifier_home_url();';
                 return '<?php echo $home_url; ?>';
 
