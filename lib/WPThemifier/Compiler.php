@@ -76,6 +76,7 @@ class WPThemifier_Compiler
             $key = str_replace(array('-', ':'), '_', strtolower($key));
 
             $value = $match['value'][0];
+            $value = html_entity_decode($value);
             $value = $this->coerce($value);
 
             $attrs[$key] = $value;

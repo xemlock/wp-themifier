@@ -5,7 +5,7 @@ class WPThemifier_TagParser_ListCategories
 {
     public function getFunction()
     {
-        return 'wp_list_categories';
+        return 'themifier_list_categories';
     }
 
     public function getTag()
