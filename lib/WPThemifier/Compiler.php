@@ -21,6 +21,7 @@ class WPThemifier_Compiler
         $this->addTagParser(new WPThemifier_TagParser_EditLink());
         $this->addTagParser(new WPThemifier_TagParser_Option());
         $this->addTagParser(new WPThemifier_TagParser_ListCategories());
+        $this->addTagParser(new WPThemifier_TagParser_Partial());
     }
 
     public function getVarEnv()
