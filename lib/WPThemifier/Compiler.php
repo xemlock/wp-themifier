@@ -22,6 +22,7 @@ class WPThemifier_Compiler
         $this->addTagParser(new WPThemifier_TagParser_Option());
         $this->addTagParser(new WPThemifier_TagParser_ListCategories());
         $this->addTagParser(new WPThemifier_TagParser_Partial());
+        $this->addTagParser(new WPThemifier_TagParser_PostMeta());
     }
 
     public function getVarEnv()
@@ -91,8 +92,8 @@ class WPThemifier_Compiler
     {
         // trailing newlines are consumed with tags
         $regexes = array(
-            WPThemifier_Token::TYPE_TAG_START => '/<\s*wp-(?P<tag>[-_a-zA-Z0-9]+)' . self::ATTRS_RE . '\s*\/?[>]\s*/',
-            WPThemifier_Token::TYPE_TAG_END   => '/<\s*\/wp-(?P<tag>[-_a-zA-Z0-9]+)\s*>\s*/',
+            WPThemifier_Token::TYPE_TAG_START => '/<\s*wp-(?P<tag>[-_a-zA-Z0-9]+)' . self::ATTRS_RE . '\s*\/?[>]/',
+            WPThemifier_Token::TYPE_TAG_END   => '/<\s*\/wp-(?P<tag>[-_a-zA-Z0-9]+)\s*>/',
             WPThemifier_Token::TYPE_VAR       => '/\$\{\s*(?P<var>[_a-zA-Z][_a-zA-Z0-9]*)\s*\}/',
         );
 
@@ -296,6 +297,9 @@ class WPThemifier_Compiler
                     $o = $this->getVarEnv()->getCurrentScope()->parseVar($token['var']);
                     break;
 
+                case WPThemifier_Token::TYPE_TAG_END:
+                    throw new Exception(sprintf('Mismatched tag wp:%s at line %d', $token['tag'], $token['lineno']));
+
                 default:
                     throw new Exception('Unexpected token: ' . print_r($token, 1));
 
@@ -346,7 +350,7 @@ class WPThemifier_Compiler
                 if (isset($this->_tagParsers[$token['tag']])) {
                     return $this->_tagParsers[$token['tag']]->parse($token, $this);
                 }
-                throw new Exception('Mismatched tag: ' . $token['tag'] . ' at line: ' . $token['lineno']);
+                throw new Exception(sprintf('Unexpected tag wp:%s at line %d', $token['tag'], $token['lineno']));
         }
     }
 

@@ -86,7 +86,8 @@ class WPThemifier_VarScope
                 return '<?php the_title(); ?>';
 
             case 'content':
-                return '<?php the_content(); ?>';
+                $this->_requireRuntime = true;
+                return '<?php echo themifier_get_content(); ?>';
 
             case 'content_main':
                 $this->_requireRuntime = true;
