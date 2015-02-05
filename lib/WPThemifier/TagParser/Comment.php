@@ -1,18 +1,10 @@
 <?php
 
-class WPThemifier_TagParser_Comment implements WPThemifier_TagParserInterface
+class WPThemifier_TagParser_Comment extends WPThemifier_TagParser_Abstract
 {
     public function parse(array $token, WPThemifier_Compiler $themifier)
     {
-        // consume tokens until a closing tag is encountered
-        $stream = $themifier->getStream();
-        while ($token = $stream->next()) {
-            if ($token['type'] === WPThemifier_Token::TYPE_TAG_END &&
-                $token['tag'] === 'comment'
-            ) {
-                break;    
-            }
-        }
+        $themifier->read(array($this, 'tagStop'));
     }
 
     public function getTag()

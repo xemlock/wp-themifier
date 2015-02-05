@@ -4,9 +4,9 @@ class WPThemifier_TagParser_If extends WPThemifier_TagParser_Abstract
 {
     public function parse(array $token, WPThemifier_Compiler $themifier)
     {
-        if (empty($token['attrs']['test'])) {
-            throw new Exception('test attribute missing');
-        }
+        $attrs = array_merge(array(
+            'test' => null,
+        ), $token['attrs']);
 
         $ifTrue = $themifier->parse(array($this, 'tagStop'));
 
@@ -27,8 +27,12 @@ class WPThemifier_TagParser_If extends WPThemifier_TagParser_Abstract
             $ifFalse = $themifier->parse(array($this, 'elseTagStop'));
         }
 
-        // FIXME test expression validation
-        $code = '<?php if (' . $token['attrs']['test'] . '): ?>' . "\n" . rtrim($ifTrue) . "\n";
+        $ifTrue = join("\n", array_filter(
+            array_map('rtrim', explode("\n", $ifTrue)),
+            'strlen'
+        ));
+
+        $code = '<?php if (' . $themifier->getExprParser()->parse($attrs['test']) . '): ?>' . "\n" . $ifTrue . "\n";
 
         if (isset($ifFalse)) {
             $code .= '<?php else: ?>' . rtrim($ifFalse) . "\n";

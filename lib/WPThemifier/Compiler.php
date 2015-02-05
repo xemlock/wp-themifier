@@ -7,6 +7,7 @@ class WPThemifier_Compiler
     protected $_themeProps;
     protected $_currentTemplate;
     protected $_tagParsers = array();
+    protected $_exprParser;
     protected $_varEnv;
     public $templateRegistry = array();
 
@@ -23,6 +24,7 @@ class WPThemifier_Compiler
         $this->addTagParser(new WPThemifier_TagParser_ListCategories());
         $this->addTagParser(new WPThemifier_TagParser_Partial());
         $this->addTagParser(new WPThemifier_TagParser_PostMeta());
+        $this->addTagParser(new WPThemifier_TagParser_Var());
     }
 
     public function getVarEnv()
@@ -124,7 +126,8 @@ class WPThemifier_Compiler
                         'start' => $m[1],
                         'end'   => $m[1] + strlen($m[0]),
                         'type'  => $type,
-                        'match' => $m[0],
+                        // 'match' => $m[0], // deprecated
+                        'value' => $m[0],
                         'lineno' => $prev,
                     );
                     switch ($type) {
@@ -311,6 +314,30 @@ class WPThemifier_Compiler
         return implode('', $output);
     }
 
+    /**
+     * Consume tokens until a stop condition occurs or stream ends, whichever
+     * comes first.
+     *
+     * @param  callable $stopCond OPTIONAL
+     * @return string
+     */
+    public function read($stop = null) // {{{
+    {
+        $contents = '';
+
+        while ($token = $this->_stream->next()) {
+            if ($stop && call_user_func($stop, $token, $this->_stream)) {
+                break;
+            }
+            if (!isset($token['value'])) {
+                print_r($token);
+            }
+            $contents .= $token['value'];
+        }
+
+        return $contents;
+    } // }}}
+
     public function parseTag($token)
     {
         switch ($token['tag']) {
@@ -424,5 +451,11 @@ class WPThemifier_Compiler
         return $match[0];
     }
 
-
+    public function getExprParser()
+    {
+        if (empty($this->_exprParser)) {
+            $this->_exprParser = new WPThemifier_ExprParser($this);
+        }
+        return $this->_exprParser;
+    }
 }
