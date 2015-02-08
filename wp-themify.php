@@ -1,6 +1,6 @@
 <?php
 
-require 'vendor/autoload.php';
+require dirname(__FILE__) . '/vendor/autoload.php';
 
 // This is a quick'n'dirty tool for building WP theme files from a single
 // HTML file.
